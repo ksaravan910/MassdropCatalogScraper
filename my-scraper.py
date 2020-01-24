@@ -1,6 +1,8 @@
 import csv
 import os
+import re
 
+from bs4 import BeautifulSoup
 from html.parser import HTMLParser
 import requests
 import json
@@ -91,7 +93,7 @@ for key, value in catalog_dict.items():
         # image gallery
         # full description
         # recommendation percentage (previously recommendation ratio)
-        # color/style options: check if key called layout with value hoverGallery exists, grab the titles in the images array 
+        # color/style options: check if key called layout with value hoverGallery exists, grab the titles in the images array
         # scrape this url: https://drop.com/api/drops;dropUrl=<prod_id>;isPreview=false;noCache=false;withPrices=true?lang=en-US&returnMeta=true
     prod_url = 'https://drop.com/api/drops;dropUrl={};isPreview=false;noCache=false;withPrices=true?lang=en-US&returnMeta=true'.format(prod_id)
     # print(prod_url)
@@ -113,7 +115,11 @@ for key, value in catalog_dict.items():
             # replace all instances of <li> or </li> with nothing
             dic['copy'] = dic['copy'].replace('\n', '')
             dic['copy'] = dic['copy'].replace('\t', '')
-            print('specs ' + dic['copy'])
+            print(dic['copy'])
+            clean_specs = re.sub(r"[^\w\s]", '', dic['copy'])
+            soup = BeautifulSoup(dic['copy'], features="html.parser")
+            text = soup.get_text(',')
+            print(text)
     ##########################################
     # this sections scrapes info from the product shipping page
     # follow this url: https://drop.com/payment/<prod_id> and scrape this XHR file https://drop.com/api/orderTotal;commitType=2;country=US;dropId=<prod_id>;orders=%5B%7B%22options%22%3A%5B898470%5D%2C%22customOptions%22%3A%5B%5D%2C%22quantity%22%3A1%7D%5D;postalCode=;state=?lang=en-US&returnMeta=true
