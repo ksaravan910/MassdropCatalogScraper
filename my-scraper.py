@@ -34,7 +34,7 @@ for key, value in catalog_dict.items():
     # print(value)
     print('prod_id {}'.format(prod_id))
     prod_name = value['name']
-    # print(prod_name)
+    print(prod_name)
     prod_slug = value['url']
     # print(prod_slug)
     prod_url = 'https://drop.com/buy/' + prod_slug
@@ -101,7 +101,8 @@ for key, value in catalog_dict.items():
     prod_raw = requests.get(prod_url).text
     # parse it into a dict
     prod_dict = json.loads(prod_raw)
-    # print(prod_dict)
+    # print this for testing
+    print(prod_dict)
     # note that any custom massdrop products wont have an msrp price since theyre only sold on the massdrop site (you are already getting the best price)
     prod_msrpPrice = prod_dict['data']['msrpPrice']
     # print('prod_msrpPrice {}'.format(prod_msrpPrice))
@@ -115,11 +116,26 @@ for key, value in catalog_dict.items():
             # replace all instances of <li> or </li> with nothing
             dic['copy'] = dic['copy'].replace('\n', '')
             dic['copy'] = dic['copy'].replace('\t', '')
-            print(dic['copy'])
-            clean_specs = re.sub(r"[^\w\s]", '', dic['copy'])
+            # print(dic['copy'])
+            # remove white spaces between > <
+            # clean_specs = re.sub(r"[^\w\s]", '', dic['copy'])
             soup = BeautifulSoup(dic['copy'], features="html.parser")
             text = soup.get_text(',')
-            print(text)
+            # specs_list = text.split(',')
+            specs_list = [x.strip() for x in text.split(',')]
+            # remove blank items from list
+            for s in specs_list:
+                if s == '':
+                    specs_list.remove(s)
+            # print(specs_list)
+
+    if (prod_msrpPrice != None):
+        prod_discount = prod_msrpPrice - prod_massdropPrice
+    else:
+        prod_discount = 0
+    # print('prod_discount {}'.format(prod_discount))
+
+    # prod_gallery =
     ##########################################
     # this sections scrapes info from the product shipping page
     # follow this url: https://drop.com/payment/<prod_id> and scrape this XHR file https://drop.com/api/orderTotal;commitType=2;country=US;dropId=<prod_id>;orders=%5B%7B%22options%22%3A%5B898470%5D%2C%22customOptions%22%3A%5B%5D%2C%22quantity%22%3A1%7D%5D;postalCode=;state=?lang=en-US&returnMeta=true
