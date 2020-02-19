@@ -1,163 +1,181 @@
 import csv
 import os
-import re
-
+from venv import logger
 from bs4 import BeautifulSoup
-from html.parser import HTMLParser
 import requests
 import json
-from pprint import pprint
 from datetime import datetime, timezone
 import dateutil.parser
 
 
-
-# increase offset by 20 on each iteration (eg. 20, 40, 60)
-# last iteration will have offset=980 (cant go past 1000)
-search_url = 'https://drop.com/api/feed;contentTypes=drops;endpoint=dynamicFeed;offset=20;query=*?lang=en-US&returnMeta=true'
-
-# download the raw JSON
-search_raw = requests.get(search_url).text
-
-# parse it into a dict
-search_dict = json.loads(search_raw)
-# gets just the prods
-catalog_dict = search_dict['data']['contentData']['dropSummaries']
-# pprint(prods_dict)
-# key_list = list(prods_dict)
-# first_key = key_list[0]
-# first_prod = prods_dict[list(prods_dict)[0]]
-# pprint(first_prod)
-
-for key, value in catalog_dict.items():
+def main_page_scraper(key, value):
     prod_id = key
-    # print(value)
-    print('prod_id {}'.format(prod_id))
+    print('product id {}'.format(prod_id))
     prod_name = value['name']
-    print(prod_name)
-    prod_slug = value['url']
-    # print(prod_slug)
+    prod_slug = value['url']  # we do not need to store this in the final csv
     prod_url = 'https://drop.com/buy/' + prod_slug
-    print(prod_url)
+    print('product url {}'.format(prod_url))
     prod_image = value['thumbImage']
-    # print(prod_image)
-
-    # to do: we will get the prod price by following the url and grabbing it from the product page
-    # to do: we will get the prod gallery by following the url and grabbing it from the product page
-
     prod_category_id = value['primaryCategoryId']
-    #  print(prod_category_id)
-
-    # to do: find what the category ids correspond to by following the url and grabbing the first category from the product page (eg. 8 = mechnical keyboards)
-
-    # prods created by massdrop, store the raw values in the CSV (1 = true, 0 = false)
-    prod_active = value['isActive']
-    prod_bestInCategory = value['isBestOf']
-    prod_custom = value['isCustom']
-    prod_new = value['isNewArrival']
-    prod_maxDropSize = value['maxDropSize']
-    prod_numFavourites = value['numFavorites']
-    prod_numReviews = value['numReviews']
-    prod_recommendedYes = value['recommendedYesResponses']
-    prod_recommendedTotal = value['recommendedTotalResponses']
-
-    try:
-        prod_freeShipping = value['badges'][1]['type']
-    except:
-        prod_freeShipping = 'paidShipping'
-    # print(prod_freeShipping)
-
-    prod_totalSold = value['totalSold']
-    prod_averageReviewScore = value['averageReviewScore']
-    # stores the product's collections as a list of IDs, we wont know what these numbers mean until we dig deeper
-    # to do: find where these collections are stored on the site
-    prod_collections = value['collections']
-
-    # this feature is useless to us since its not fixed, will change at some point in the future
-    # prod_developmentPhase = value['developmentPhase']
-    prod_refundable = value['isReturnable']
-    prod_dropStart = value['startAt']
-    start_datetime = dateutil.parser.parse(prod_dropStart)
+    prod_is_active = value['isActive']
+    prod_is_best_in_category = value['isBestOf']
+    prod_is_custom = value['isCustom']
+    prod_is_new = value['isNewArrival']
+    prod_max_drop_size = value['maxDropSize']
+    prod_num_favourites = value['numFavorites']
+    prod_num_reviews = value['numReviews']
+    prod_dev_phase = value['developmentPhase']
+    print('product dev phase: {}'.format(prod_dev_phase))
+    prod_recommended_yes = value['recommendedYesResponses']
+    prod_recommended_total = value['recommendedTotalResponses']
+    prod_total_sold = value['totalSold']
+    prod_average_review_score = value['averageReviewScore']
+    prod_collection_ids = value['collections']  # stores the product's collections as a list of IDs, we wont know what these numbers mean until we dig deeper
+    prod_is_refundable = value['isReturnable']
+    prod_drop_start = value['startAt']
+    start_datetime = dateutil.parser.parse(prod_drop_start)
     today_datetime = datetime.now(timezone.utc)
-    # calculates how long a drop has been active by taking the difference between today's date and the startAt date (not including today's date)
-    prod_daysActive = abs((today_datetime - start_datetime).days)
-    # print(prod_daysActive)
+    prod_days_active = abs((today_datetime - start_datetime).days)  # calculates how long a drop has been active by taking the difference between today's date and the startAt date (not including today's date)
+    prod_attrs = {'prod_id':prod_id, 'prod_name':prod_name, 'prod_url':prod_url, 'prod_image':prod_image, 'prod_category_id':prod_category_id, 'prod_is_active':prod_is_active,
+                  'prod_is_best_in_category':prod_is_best_in_category, 'prod_is_custom':prod_is_custom, 'prod_is_new':prod_is_new, 'prod_max_drop_size':prod_max_drop_size,
+                  'prod_num_favourites':prod_num_favourites, 'prod_num_reviews':prod_num_reviews, 'prod_dev_phase':prod_dev_phase, 'prod_recommended_yes':prod_recommended_yes,
+                  'prod_recommended_total':prod_recommended_total, 'prod_total_sold':prod_total_sold, 'prod_average_review_score':prod_average_review_score,
+                  'prod_collection_ids':prod_collection_ids, 'prod_is_refundable':prod_is_refundable, 'prod_drop_start':prod_drop_start, 'prod_days_active':prod_days_active}
+    if prod_attrs['prod_dev_phase'] != 1:
+        product_page_scraper(prod_attrs)
+        checkout_page_scraper(prod_attrs)
 
-    #####################################################
-    # this section scrapes info from the product page
-    # info we will collect
-        # msrp price
-        # massdrop price
-        # specs (if available)/details
-        # discount: calculate as difference between retail price and massdrop price
-        # image gallery
-        # full description
-        # recommendation percentage (previously recommendation ratio)
-        # color/style options: check if key called layout with value hoverGallery exists, grab the titles in the images array
-        # scrape this url: https://drop.com/api/drops;dropUrl=<prod_id>;isPreview=false;noCache=false;withPrices=true?lang=en-US&returnMeta=true
-    prod_url = 'https://drop.com/api/drops;dropUrl={};isPreview=false;noCache=false;withPrices=true?lang=en-US&returnMeta=true'.format(prod_id)
-    # print(prod_url)
-    # download the raw JSON
-    prod_raw = requests.get(prod_url).text
-    # parse it into a dict
-    prod_dict = json.loads(prod_raw)
-    # print this for testing
-    print(prod_dict)
-    # note that any custom massdrop products wont have an msrp price since theyre only sold on the massdrop site (you are already getting the best price)
-    prod_msrpPrice = prod_dict['data']['msrpPrice']
-    # print('prod_msrpPrice {}'.format(prod_msrpPrice))
-    prod_massdropPrice = prod_dict['data']['currentPrice']
-    # print('prod_massdropPrice {}'.format(prod_massdropPrice))
+    return prod_attrs
 
-    content_dict = prod_dict['data']['description']['content']
-    # prints the dict that contains specs as heading
+
+# Scrapes info from the product page
+## url = https://drop.com/buy/<prod_slug>
+## msrp price
+## massdrop price
+## specs (if available)/details
+## discount: calculate as difference between retail price and massdrop price
+## image gallery
+## description
+## recommendation percentage
+## color/style options
+def product_page_scraper(row_values):
+    prod_varieties = []
+    prod_gallery = []
+    prod_id = row_values['prod_id']
+    xhr_url = 'https://drop.com/api/drops;dropUrl={};isPreview=false;noCache=false;withPrices=true?lang=en-US&returnMeta=true'.format(prod_id)
+    prod_raw = requests.get(xhr_url).text  # download the raw json
+    prod_dict = json.loads(prod_raw)  # parse it into a dict
+    prod_msrp_price = prod_dict['data']['msrpPrice']
+
+    prod_massdrop_price = prod_dict.get('data', {}).get('currentPrice')
+    prod_category_name = prod_dict['data']['primaryCategoryName']
+    prod_is_promo = prod_dict['data']['isPromo']
+    content_dict = prod_dict.get('data', {}).get('description', {}).get('content')
+    print(prod_dict['data']['description'])
+
     for dic in content_dict:
         if 'Specs' in dic.values():
             # replace all instances of <li> or </li> with nothing
             dic['copy'] = dic['copy'].replace('\n', '')
             dic['copy'] = dic['copy'].replace('\t', '')
-            # print(dic['copy'])
-            # remove white spaces between > <
-            # clean_specs = re.sub(r"[^\w\s]", '', dic['copy'])
             soup = BeautifulSoup(dic['copy'], features="html.parser")
             text = soup.get_text(',')
-            # specs_list = text.split(',')
             specs_list = [x.strip() for x in text.split(',')]
-            # remove blank items from list
-            for s in specs_list:
+            for s in specs_list:   # remove blank items from list
                 if s == '':
                     specs_list.remove(s)
-            # print(specs_list)
 
-    if (prod_msrpPrice != None):
-        prod_discount = prod_msrpPrice - prod_massdropPrice
+    if prod_msrp_price and prod_massdrop_price is not None:
+        prod_discount = prod_msrp_price - prod_massdrop_price
     else:
         prod_discount = 0
-    # print('prod_discount {}'.format(prod_discount))
 
-    # prod_gallery =
-    ##########################################
-    # this sections scrapes info from the product shipping page
-    # follow this url: https://drop.com/payment/<prod_id> and scrape this XHR file https://drop.com/api/orderTotal;commitType=2;country=US;dropId=<prod_id>;orders=%5B%7B%22options%22%3A%5B898470%5D%2C%22customOptions%22%3A%5B%5D%2C%22quantity%22%3A1%7D%5D;postalCode=;state=?lang=en-US&returnMeta=true
-    # info to collect
-        # final price
+    for list_item in content_dict:
+        if 'images' in list_item:
+            for image in list_item['images']:
+                prod_gallery.append(image['src'])
+
+    soup = BeautifulSoup(content_dict[0]['copy'], features="html.parser")
+    prod_description = soup.get_text()
+    prod_recommended_total = row_values['prod_recommended_total']
+    prod_recommended_yes = row_values['prod_recommended_yes']
+
+    if prod_recommended_total != 0:
+        prod_recommended_pc = prod_recommended_yes / prod_recommended_total
+    else:
+        prod_recommended_pc = 0
+
+    try:
+        for i in content_dict:
+            if i['layout'] == 'hoverGallery':
+                for j in i['images']:
+                    prod_varieties.append(j['title'])
+    except KeyError as error:
+        logger.info(error)
+
+    row_values.update({'prod_msrp_price':prod_msrp_price, 'prod_massdrop_price':prod_massdrop_price, 'prod_category_name':prod_category_name,
+                       'prod_is_promo':prod_is_promo, 'prod_discount':prod_discount, 'prod_gallery':prod_gallery, 'prod_description':prod_description,
+                       'prod_recommended_pc':prod_recommended_pc, 'prod_varities':prod_varieties})
+
+
+# Scrapes info from the product checkout page
+## url = https://drop.com/payment/<prod_id>
+## final price
+## shipping cost
+## taxes
+def checkout_page_scraper(row_values):
+    prod_id = row_values['prod_id']
     payment_url = 'https://drop.com/api/orderTotal;commitType=2;country=US;dropId={};' \
                   'orders=%5B%7B%22options%22%3A%5B898470%5D%2C%22customOptions%22%3A%5B%5D%2C%22quantity%22%3A1%7D%5D;' \
                   'postalCode=;state=?lang=en-US&returnMeta=true'.format(prod_id)
-    # print(payment_url)
-    # download the raw JSON
+    # download the raw json
     payment_raw = requests.get(payment_url).text
     # parse it into a dict
     payment_dict = json.loads(payment_raw)
-    # print(payment_dict)
-    prod_totalCost = payment_dict['data']['total']
-    # print('prod_totalCost {}'.format(prod_totalCost))
-# if a file with this name already exists remove it, otherwise create it and add headers and write to it
-try:
-    os.remove('massdrop-products.csv')
-except OSError:
-    file = csv.writer(open('massdrop-products.csv', 'a'))
-    # to do: update this line
-    file.writerow(['ID', 'Name', 'Link', 'Image', 'Price', 'PrimaryCategoryId', 'PrimaryCategoryName', 'Custom'])
-    # to do: update this line
-    file.writerow([prod_id])
+    prod_total_cost = payment_dict.get('data', {}).get('total')
+    prod_taxes = payment_dict.get('data', {}).get('taxRateTotal')
+    prod_shipping = payment_dict.get('data', {}).get('shipping')
+    row_values.update({'prod_total_cost':prod_total_cost, 'prod_taxes':prod_taxes, 'prod_shipping':prod_shipping})
+
+
+def write_to_file(prod_attrs):
+    output_file = 'massdrop-products.csv'
+    # TODO fix the headings so that they match with the data order
+    if os.path.exists(output_file):
+        file = open(output_file, 'a', newline='', encoding='utf-8')  # append if file already exists
+    else:
+        file = open(output_file, 'w', newline='', encoding='utf-8')  # make a new file if not
+        writer = csv.DictWriter(file, fieldnames=list(prod_attrs.keys()))  # write headers to new file
+        writer.writeheader()
+
+    write_outfile = csv.writer(file)
+    write_outfile.writerow(list(prod_attrs.values()))
+    return file
+
+
+def main():
+    offset_counter = 0  # keeps track of how many dictionaries there are
+    if os.path.exists('massdrop-products.csv'):
+        os.remove('massdrop-products.csv')  # deletes the file on every run so we have a clean slate
+    else:
+        print('Nothing to delete')
+
+    for offset in range(20, 1000, 20):
+        offset_counter = offset_counter + 1
+
+        search_url = 'https://drop.com/api/feed;contentTypes=drops;endpoint=dynamicFeed;offset={' \
+                     '};query=*?lang=en-US&returnMeta=true'.format(offset)
+        search_raw = requests.get(search_url).text  # downloads the raw json
+        search_dict = json.loads(search_raw)  # converts from json string to python dictionary
+
+        catalog_dict = search_dict['data']['contentData']['dropSummaries']  # stores just the products
+
+        for key, value in catalog_dict.items():  # iterates through key value pairs in the dictionary
+            prod_attrs = main_page_scraper(key, value)
+            print('Writing to file: {}'.format(prod_attrs))
+            outfile = write_to_file(prod_attrs)
+
+    outfile.close()
+
+
+main()
