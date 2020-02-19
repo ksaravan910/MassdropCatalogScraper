@@ -1,2 +1,2 @@
 # MassdropCatalogScraper
-Scrapes a small subset of items from the Massdrop catalog
+Scrapes ~1000 items from the Massdrop catalog
