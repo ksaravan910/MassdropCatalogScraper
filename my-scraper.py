@@ -1,20 +1,21 @@
 import csv
 import os
+from decimal import Decimal
+from pprint import pprint
 from venv import logger
 from bs4 import BeautifulSoup
 import requests
 import json
+import re
 from datetime import datetime, timezone
 import dateutil.parser
 
 
 def main_page_scraper(key, value):
     prod_id = key
-    print('product id {}'.format(prod_id))
     prod_name = value['name']
     prod_slug = value['url']  # we do not need to store this in the final csv
     prod_url = 'https://drop.com/buy/' + prod_slug
-    print('product url {}'.format(prod_url))
     prod_image = value['thumbImage']
     prod_category_id = value['primaryCategoryId']
     prod_is_active = value['isActive']
@@ -25,11 +26,10 @@ def main_page_scraper(key, value):
     prod_num_favourites = value['numFavorites']
     prod_num_reviews = value['numReviews']
     prod_dev_phase = value['developmentPhase']
-    print('product dev phase: {}'.format(prod_dev_phase))
     prod_recommended_yes = value['recommendedYesResponses']
     prod_recommended_total = value['recommendedTotalResponses']
     prod_total_sold = value['totalSold']
-    prod_average_review_score = value['averageReviewScore']
+    prod_average_review_score = round(Decimal(value['averageReviewScore']), 1)
     prod_collection_ids = value['collections']  # stores the product's collections as a list of IDs, we wont know what these numbers mean until we dig deeper
     prod_is_refundable = value['isReturnable']
     prod_drop_start = value['startAt']
@@ -59,6 +59,7 @@ def main_page_scraper(key, value):
 ## recommendation percentage
 ## color/style options
 def product_page_scraper(row_values):
+
     prod_varieties = []
     prod_gallery = []
     prod_id = row_values['prod_id']
@@ -66,12 +67,11 @@ def product_page_scraper(row_values):
     prod_raw = requests.get(xhr_url).text  # download the raw json
     prod_dict = json.loads(prod_raw)  # parse it into a dict
     prod_msrp_price = prod_dict['data']['msrpPrice']
-
+    prod_brand = [x.strip() for x in re.split('\+|x', prod_dict['data']['brand'])]
     prod_massdrop_price = prod_dict.get('data', {}).get('currentPrice')
     prod_category_name = prod_dict['data']['primaryCategoryName']
     prod_is_promo = prod_dict['data']['isPromo']
     content_dict = prod_dict.get('data', {}).get('description', {}).get('content')
-    print(prod_dict['data']['description'])
 
     for dic in content_dict:
         if 'Specs' in dic.values():
@@ -113,9 +113,9 @@ def product_page_scraper(row_values):
     except KeyError as error:
         logger.info(error)
 
-    row_values.update({'prod_msrp_price':prod_msrp_price, 'prod_massdrop_price':prod_massdrop_price, 'prod_category_name':prod_category_name,
+    row_values.update({'prod_msrp_price':prod_msrp_price, 'prod_brand':prod_brand, 'prod_massdrop_price':prod_massdrop_price, 'prod_category_name':prod_category_name,
                        'prod_is_promo':prod_is_promo, 'prod_discount':prod_discount, 'prod_gallery':prod_gallery, 'prod_description':prod_description,
-                       'prod_recommended_pc':prod_recommended_pc, 'prod_varities':prod_varieties})
+                       'prod_recommended_pc':prod_recommended_pc, 'prod_varieties':prod_varieties})
 
 
 # Scrapes info from the product checkout page
@@ -142,9 +142,9 @@ def write_to_file(prod_attrs):
     output_file = 'massdrop-products.csv'
     # TODO fix the headings so that they match with the data order
     if os.path.exists(output_file):
-        file = open(output_file, 'a', newline='', encoding='utf-8')  # append if file already exists
+        file = open(output_file, 'a', newline='', encoding='utf-8-sig')  # append if file already exists
     else:
-        file = open(output_file, 'w', newline='', encoding='utf-8')  # make a new file if not
+        file = open(output_file, 'w', newline='', encoding='utf-8-sig')  # make a new file if not
         writer = csv.DictWriter(file, fieldnames=list(prod_attrs.keys()))  # write headers to new file
         writer.writeheader()
 
